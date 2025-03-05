@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from rufus.config import DEFAULT_CRAWL_DEPTH
-from rufus.crawler import async_crawl
+from rufus.crawler import Crawler
 from rufus.synthesizer import Synthesizer
 
 class RufusClient:

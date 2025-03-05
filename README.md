@@ -1,85 +1,124 @@
-# AI-web-data-extractor
+# Rufus: AI-Powered Web Data Extractor for RAG Pipelines
 
-virtual environment
-pip install .e -- setup.py
+Rufus is an AI-powered web data extractor designed to prepare content for Retrieval-Augmented Generation (RAG) agents. It intelligently crawls websites based on user-defined prompts, selectively extracts relevant data, and synthesizes the information into structured documents (JSON) that can be directly integrated into your RAG pipelines.
 
-python -m rufus.main --url https://ai.pydantic.dev/ --depth 2 --output output.json
+## Features
 
+- **Intelligent Crawling:**  
+  Crawl websites recursively with a configurable depth and follow nested links.
 
+- **Dynamic Content Rendering:**  
+  Uses Playwright’s async API to render pages with JavaScript, ensuring dynamic content is captured.
 
-challenges:
-not added logging logic crawled 81 urls
+- **Selective Extraction:**  
+  Filters pages based on user-defined instructions (e.g., "scrape customer FAQs").
 
-python main.py --url "https://www.sfgov.com" \
-               --depth 2 \
-               --instructions "scrape customer FAQ's" \
-               --output "sfgov_report.json"
+- **Document Synthesis:**  
+  Aggregates and summarizes content using a transformers-based summarization pipeline (facebook/bart-large-cnn).
 
+- **Robust Error Handling & Logging:**  
+  Comprehensive logging and error management ensure reliability and ease of debugging.
 
+- **Intuitive API:**  
+  Provides an easy-to-use client interface (`RufusClient`) for integration into RAG pipelines.
 
+## Installation
+
+1. **Clone the Repository:**
+   ```bash
+   git clone https://github.com/yourusername/AI-web-data-extractor.git
+   cd AI-web-data-extractor
+   ```
+
+2. **Set Up the Virtual Environment:**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. **Install Dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Install Playwright (for dynamic content rendering):**
+   ```bash
+   pip install playwright
+   playwright install
+   ```
+
+## Usage
+
+### Command-Line Interface (CLI)
+
+Run Rufus from the command line by providing a URL, maximum crawl depth, and instructions:
+
+```bash
+python main.py --url "https://example.com" --depth 2 --instructions "scrape customer FAQs" --output "reports/report.json"
 
 python main.py --url "https://ai.pydantic.dev" \
                --depth 2 \
                --instructions "scrape anything related to RAG" \
-               --output "pydantic_report.json"
+               --output "reports/pydantic_report.json"
+```
 
+### Programmatic API
 
+You can also use Rufus as a Python module:
 
-python main.py --url "https://www.python.org/" \
-               --depth 2 \
-               --instructions "scrape FAQ" \
-               --output "reports/python_report.json"
-
-
-issues with the summarizer part with sequential fetching initially
-concurrent fetching
-issues faced and improvement on working with 
-
-What’s Changing?
-Synchronous vs. Asynchronous:
-The current crawler uses requests_html and sleeps between requests. In an asynchronous version, we use libraries like aiohttp and asyncio to concurrently fetch multiple pages, which speeds up the process.
-
-Concurrency:
-Instead of a recursive call that waits for each request to finish, an asynchronous implementation launches several requests at once (using tasks), then waits for them all to complete.
-
-Breakdown of Changes in crawler.py:
-aiohttp & asyncio:
-We import and use aiohttp for asynchronous HTTP requests and asyncio for managing concurrency.
-
-fetch_page(session, url):
-An asynchronous function that replaces self.session.get(). It uses async with to handle the request and awaits the response text.
-
-async_crawl(...):
-A recursive asynchronous function that:
-
-Checks if the current depth exceeds the maximum or if the URL was already visited.
-Uses an aiohttp.ClientSession() to fetch the page.
-Uses BeautifulSoup to parse the content and then calls clean_text() from your utils.
-Checks relevance using your is_relevant() function.
-Extracts and normalizes links using urljoin.
-Waits for a delay (await asyncio.sleep(delay)).
-Launches asynchronous tasks for each child link and waits for them concurrently with asyncio.gather().
-Crawler Class Methods:
-
-crawl_async: Public asynchronous method that initializes the visited set and starts the async crawling.
-crawl: Synchronous wrapper that calls asyncio.run() on the async crawler, allowing you to call crawl() from synchronous code (e.g., in main.py).
-
-
-# Example usage in a separate script or interactive shell
+```python
+pip install Rufus
 
 from Rufus import RufusClient
 import os
 
-# Get the API key from environment variables
-key = os.getenv('Rufus_API_KEY', 'your-default-api-key')
-
+# Get the API key from environment variables (dummy key during development)
+key = os.getenv('Rufus_API_KEY', 'rufus-dummy-key-2025')
 client = RufusClient(api_key=key)
 
 instructions = "Find information about product features and customer FAQs."
-# Call the scrape method with a target URL and instructions
 document = client.scrape("https://example.com", instructions=instructions)
-
 print(document)
-Rufus_API_KEY="rufus-dummy-key-2025"
-export Rufus_API_KEY="dummy-key"
+```
+
+## Testing
+
+Run all unit tests using the following command:
+
+```bash
+python -m unittest discover
+```
+
+This will execute tests in the `tests/` folder and output the results.
+
+## Integration into a RAG Pipeline
+
+Rufus outputs a structured JSON document that includes:
+- `source_url`
+- `instructions`
+- `synthesized_summary`
+- `pages_found`
+
+You can feed this JSON directly into your RAG system, allowing downstream LLMs to use the structured content for generating enhanced responses.
+
+## Project Structure
+
+```
+AI-web-data-extractor/
+├── rufus/
+│   ├── __init__.py        # Exports RufusClient
+│   ├── client.py          # RufusClient API wrapper
+│   ├── config.py          # Configuration settings
+│   ├── crawler.py         # Asynchronous crawler with dynamic content support
+│   ├── extractor.py       # Text extraction and cleaning
+│   ├── synthesizer.py     # Content summarization
+│   ├── utils.py           # Utility functions (clean_text, is_relevant, chunk_text)
+│   └── logs/              # Log files
+│       └── rufus.log
+├── tests/                 # Unit tests
+├── main.py                # Command-line interface for Rufus
+├── requirements.txt       # Python dependencies
+├── README.md              # Project overview and usage instructions
+└── setup.py               # Packaging configuration
+```
 
