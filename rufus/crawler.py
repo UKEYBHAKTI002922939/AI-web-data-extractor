@@ -1,47 +1,85 @@
-import requests
+# rufus/crawler.py
+
+import logging
+import time
+from requests_html import HTMLSession
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
-from typing import List, Set
-from rufus.config import HTTP_TIMEOUT, USER_AGENT
+from rufus.config import DEFAULT_CRAWL_DEPTH, USER_AGENT, HTTP_TIMEOUT
+from rufus.utils import is_relevant
 
 class Crawler:
-    def __init__(self, max_depth: int = 2):
+    def __init__(self, max_depth=DEFAULT_CRAWL_DEPTH, delay=1, instructions=""):
+        """
+        :param max_depth: Maximum crawl depth
+        :param delay: Seconds to wait between requests
+        :param instructions: User-defined instructions to filter relevant pages
+        """
         self.max_depth = max_depth
-        self.visited: Set[str] = set()
+        self.delay = delay
+        self.instructions = instructions
+        self.session = HTMLSession()
 
-    def crawl(self, url: str, depth: int = 0) -> List[str]:
+    def fetch_page(self, url):
         """
-        Recursively crawl a website up to the given depth.
-        Returns a list of discovered URLs.
+        Fetch page content using an HTML session and handle JavaScript.
         """
-        if depth > self.max_depth or url in self.visited:
-            return []
-        self.visited.add(url)
-        print(f"Crawling: {url}")
         try:
-            headers = {'User-Agent': USER_AGENT}
-            response = requests.get(url, timeout=HTTP_TIMEOUT, headers=headers)
-            if response.status_code != 200:
-                return []
-            content = response.text
-            soup = BeautifulSoup(content, "html.parser")
-            links = []
-            for a in soup.find_all("a", href=True):
-                link = urljoin(url, a["href"])
-                if self.is_valid_url(link):
-                    links.append(link)
-            # Recursively crawl the discovered links
-            crawled_links = [url]
-            for link in links:
-                crawled_links.extend(self.crawl(link, depth + 1))
-            return list(set(crawled_links))
+            logging.info(f"Fetching page: {url}")
+            response = self.session.get(url, timeout=HTTP_TIMEOUT, headers={"User-Agent": USER_AGENT})
+            # Attempt to render JavaScript if present
+            response.html.render(timeout=10)
+            return response.text
         except Exception as e:
-            print(f"Error crawling {url}: {e}")
+            logging.error(f"Failed to fetch {url}: {str(e)}")
+            return None
+
+    def crawl(self, url, depth=0, visited=None):
+        """
+        Recursively crawl the website up to max_depth, returning relevant pages only.
+        """
+        if visited is None:
+            visited = set()
+
+        # Base cases
+        if depth > self.max_depth or url in visited:
             return []
 
-    def is_valid_url(self, url: str) -> bool:
-        """
-        Check if a URL is valid.
-        """
-        parsed = urlparse(url)
-        return bool(parsed.netloc) and bool(parsed.scheme)
+        visited.add(url)
+        html_content = self.fetch_page(url)
+        if not html_content:
+            return []
+
+        # Extract text
+        soup = BeautifulSoup(html_content, "html.parser")
+        extracted_text = soup.get_text(separator="\n", strip=True)
+
+        # Filter out irrelevant pages based on instructions
+        if self.instructions and not is_relevant(extracted_text, self.instructions):
+            logging.info(f"Skipping {url} due to irrelevance.")
+            return []
+
+        # Gather the result for this page
+        current_result = {
+            "url": url,
+            "content": extracted_text
+        }
+
+        # Extract & normalize links
+        links = [a.get("href") for a in soup.find_all("a", href=True)]
+        # Filter out only absolute HTTP(S) links
+        from requests.compat import urljoin
+        full_links = set()
+        for link in links:
+            # Convert relative links to absolute
+            absolute = urljoin(url, link)
+            if absolute.startswith("http"):
+                full_links.add(absolute)
+
+        time.sleep(self.delay)  # Politeness delay
+
+        # Crawl child links recursively
+        nested_results = []
+        for link in full_links:
+            nested_results.extend(self.crawl(link, depth + 1, visited))
+
+        return [current_result] + nested_results

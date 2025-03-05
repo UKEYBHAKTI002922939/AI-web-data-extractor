@@ -14,3 +14,7 @@ SUMMARY_MAX_LENGTH = 150
 
 # User Agent for web requests
 USER_AGENT = "RufusBot/0.1 (+https://github.com/UKEYBHAKTI002922939/AI-web-data-extractor)"
+
+# Logging settings
+LOG_FILE = "rufus.log"
+LOG_LEVEL = "INFO"
